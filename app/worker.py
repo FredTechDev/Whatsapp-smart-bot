@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict
 from app.reply_generator import generate_reply
 from app.messaging import client as messaging_client
+from app.metrics_extra import set_worker_queue_depth, inc_message_retry, inc_llm_calls
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,11 @@ class Worker:
 
     async def _run(self):
         while True:
+            # update queue depth metric
+            try:
+                set_worker_queue_depth(self.queue.qsize())
+            except Exception:
+                pass
             item = await self.queue.get()
             if item is None:
                 # sentinel to stop
@@ -54,8 +60,11 @@ class Worker:
         # Generate reply (may internally call blocking code via run_in_executor)
         try:
             reply = await generate_reply(body, history)
+            # mark llm call success
+            inc_llm_calls(True)
         except Exception:
             logger.exception("Failed to generate reply; using fallback")
+            inc_llm_calls(False)
             reply = "Thanks — I received your message. Can you tell me more?"
 
         # Send message (messaging_client.send may be blocking -> run in thread)
@@ -63,6 +72,11 @@ class Worker:
             await asyncio.to_thread(messaging_client.send, to=from_number, body=reply)
         except Exception:
             logger.exception("Failed to send message to %s", from_number)
+            # increment retry counter (best-effort; sending retries should be implemented elsewhere)
+            try:
+                inc_message_retry(getattr(messaging_client, "_client", type(messaging_client)).__class__.__name__)
+            except Exception:
+                inc_message_retry("unknown")
 
     async def enqueue(self, item: Dict[str, Any]):
         await self.queue.put(item)

@@ -7,6 +7,7 @@ from app.messaging import client as messaging_client
 from app.config import settings
 from app.worker import worker
 from app.idempotency import idempotency
+from app.sentry_init import init_sentry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,6 +18,8 @@ store = ConvoStore(redis_url=settings.REDIS_URL)
 
 @app.on_event("startup")
 async def startup():
+    # initialize optional Sentry
+    init_sentry()
     # start background worker
     await worker.start()
 
