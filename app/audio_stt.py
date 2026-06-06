@@ -5,28 +5,35 @@ import subprocess
 import tempfile
 from app.config import settings
 import openai
+from app.lang_detect import detect_language
 
 logger = logging.getLogger(__name__)
 openai.api_key = settings.OPENAI_API_KEY
 
-async def transcribe_audio_openai(audio_bytes: bytes, mime_type: str = "audio/ogg") -> str:
-    """Transcribe audio bytes using OpenAI Whisper (synchronous SDK called in thread).
-    Returns the transcript string.
+async def transcribe_audio_openai(audio_bytes: bytes, mime_type: str = "audio/ogg") -> tuple[str, str]:
+    """Transcribe audio bytes using OpenAI Whisper and detect language.
+    Returns (transcript, language_code).
     """
     loop = asyncio.get_event_loop()
     def _call():
         f = io.BytesIO(audio_bytes)
-        # Depending on SDK version: use openai.Audio.transcribe or openai.Whisper
         try:
             resp = openai.Audio.transcribe("whisper-1", f)
-            # newer SDKs return object with 'text'
             if isinstance(resp, dict):
-                return resp.get('text', '')
-            return getattr(resp, 'text', '')
+                text = resp.get('text', '')
+            else:
+                text = getattr(resp, 'text', '')
+            return text
         except Exception:
-            # fallback: try ChatCompletion with base64? Not implemented
+            # re-raise to be handled in async wrapper
             raise
-    return await loop.run_in_executor(None, _call)
+    try:
+        transcript = await loop.run_in_executor(None, _call)
+        lang = detect_language(transcript)
+        return transcript, lang
+    except Exception:
+        logger.exception("STT (Whisper) call failed")
+        return "", "en"
 
 
 def _convert_to_ogg_opus(input_bytes: bytes) -> bytes:
