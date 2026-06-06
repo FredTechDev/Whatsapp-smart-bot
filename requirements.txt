@@ -6,3 +6,7 @@ twilio
 openai
 pydantic
 pytest
+scikit-learn
+joblib
+pandas
+tenacity

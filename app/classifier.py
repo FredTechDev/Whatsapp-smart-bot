@@ -1,14 +1,18 @@
-# Simple rule-based urgency classifier. Replace with sklearn/transformer later.
-KEYWORDS_HIGH = {"emergency", "urgent", "help now", "asap", "please help", "immediately", "can't", "cant", "cannot", "can't breathe"}
-KEYWORDS_MED = {"issue", "problem", "not working", "error", "fail", "unable"}
+from app.config import settings
+from typing import Tuple
 
+# Wrapper that delegates to rule-based or ML classifier depending on settings.CLASSIFIER_MODE
 
-def classify_urgency(text: str):
-    t = (text or "").lower()
-    for k in KEYWORDS_HIGH:
-        if k in t:
-            return "high", 0.99
-    for k in KEYWORDS_MED:
-        if k in t:
-            return "medium", 0.75
-    return "low", 0.3
+def classify_urgency(text: str) -> Tuple[str, float]:
+    mode = (settings.CLASSIFIER_MODE or "rule").lower()
+    if mode == "ml":
+        try:
+            from app.classifier_ml_wrapper import classify_urgency_ml
+            return classify_urgency_ml(text)
+        except Exception:
+            # fallback to rule-based
+            from app.classifier_rule import classify_urgency_rule
+            return classify_urgency_rule(text)
+    else:
+        from app.classifier_rule import classify_urgency_rule
+        return classify_urgency_rule(text)
