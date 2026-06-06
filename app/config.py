@@ -35,6 +35,20 @@ class Settings(BaseSettings):
     # Observability / Sentry
     SENTRY_DSN: str = ""
 
+    # Voice settings
+    STT_PROVIDER: str = "openai"  # openai|assemblyai|gcp|aws
+    TTS_PROVIDER: str = "elevenlabs"  # elevenlabs|gcp|aws|openai
+    ELEVENLABS_API_KEY: str = ""
+
+    # S3 (for hosting media for Twilio). If not set, Twilio uploads may fail.
+    S3_BUCKET: str = ""
+    S3_REGION: str = "us-east-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+
+    # Allowed media types
+    ALLOWED_MEDIA_TYPES: str = "audio/ogg,audio/opus,audio/mpeg,audio/mp3"
+
     class Config:
         env_file = ".env"
 
