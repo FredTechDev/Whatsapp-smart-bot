@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+aioredis
+python-dotenv
+twilio
+openai
+pydantic
+pytest
