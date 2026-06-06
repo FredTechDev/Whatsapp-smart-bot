@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException
+import asyncio
 import os
 from app.classifier import classify_urgency
 from app.convo_store import ConvoStore
@@ -8,6 +9,10 @@ from app.config import settings
 
 app = FastAPI()
 store = ConvoStore(redis_url=settings.REDIS_URL)
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 @app.post("/webhook")
 async def webhook(request: Request):

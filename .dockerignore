@@ -1,0 +1,14 @@
+# Ignore build artifacts and env
+__pycache__/
+*.py[cod]
+.env
+.env.*
+redis_data/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Editor
+.vscode/
+.idea/
