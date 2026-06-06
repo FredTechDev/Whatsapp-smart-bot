@@ -25,6 +25,16 @@ class Settings(BaseSettings):
     # Public webhook URL override (useful when behind proxy / ngrok)
     WEBHOOK_PUBLIC_URL: str = ""
 
+    # LLM / OpenAI settings
+    LLM_MODEL: str = "gpt-3.5-turbo"
+    LLM_RATE_LIMIT_RPS: float = 1.0
+    LLM_MAX_HISTORY_MESSAGES: int = 8
+    LLM_TIMEOUT_SECONDS: int = 10
+    LLM_MAX_TOKENS: int = 200
+
+    # Observability / Sentry
+    SENTRY_DSN: str = ""
+
     class Config:
         env_file = ".env"
 
