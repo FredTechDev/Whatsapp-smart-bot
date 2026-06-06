@@ -1,0 +1,10 @@
+text,label
+"I need help now, my server is down",high
+"Please respond asap, it's urgent",high
+"I can't login and need access",high
+"I'm seeing an error when I try to login",medium
+"The API returns 500 sometimes",medium
+"Facing intermittent failures in the app",medium
+"What are your pricing plans?",low
+"How do I upgrade?",low
+"Hello, I have a general question",low
