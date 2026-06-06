@@ -5,12 +5,27 @@ from app.convo_store import ConvoStore
 from app.reply_generator import generate_reply
 from app.messaging import client as messaging_client
 from app.config import settings
+from app.worker import worker
+from app.idempotency import idempotency
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
 store = ConvoStore(redis_url=settings.REDIS_URL)
+
+
+@app.on_event("startup")
+async def startup():
+    # start background worker
+    await worker.start()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await worker.stop()
+    await idempotency.close()
+
 
 @app.get("/webhook")
 async def webhook_verify(request: Request):
@@ -23,6 +38,7 @@ async def webhook_verify(request: Request):
     if mode == "subscribe" and verify_token == expected:
         return int(challenge or 0)
     raise HTTPException(status_code=400, detail="Invalid verify token")
+
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -37,6 +53,8 @@ async def webhook(request: Request):
 
     # parse depending on provider
     provider = getattr(settings, "WHATSAPP_PROVIDER", "twilio").lower()
+
+    provider_message_id = None
 
     if provider == "meta":
         try:
@@ -61,6 +79,7 @@ async def webhook(request: Request):
             message = messages[0]
             body = message.get("text", {}).get("body", "")
             from_number = "whatsapp:" + message.get("from", "")
+            provider_message_id = message.get("id") or message.get("message_id")
         except Exception as e:
             logger.exception("Failed to parse Meta payload")
             raise HTTPException(status_code=400, detail="Malformed payload")
@@ -69,6 +88,7 @@ async def webhook(request: Request):
         form = await request.form()
         body = form.get("Body") or ""
         from_number = form.get("From") or ""
+        provider_message_id = form.get("MessageSid") or form.get("SmsSid")
         params = dict(form)
         # Validate request
         valid = messaging_client.validate_request(public_url, params, headers)
@@ -79,21 +99,28 @@ async def webhook(request: Request):
     if not from_number:
         raise HTTPException(status_code=400, detail="Missing From")
 
+    # Idempotency check
+    if provider_message_id:
+        key = f"idempotency:{provider}:{provider_message_id}"
+        duplicate = await idempotency.seen_or_set(key)
+        if duplicate:
+            logger.info("Duplicate message received: %s", provider_message_id)
+            return {"status": "duplicate"}
+
     # Classify urgency
     urgency, score = classify_urgency(body)
+
     # Persist message and metadata
     await store.append_message(from_number, {"text": body, "urgency": urgency, "score": score})
-    # Decide response
+
+    # Enqueue processing to background worker (generate reply + send)
     if urgency == "high":
-        reply = "I detected this might be urgent. Do you want me to escalate this to support now?"
+        # short-circuit immediate response for high urgency is optional; here we still enqueue
+        reply_template = "I detected this might be urgent. Do you want me to escalate this to support now?"
+        await worker.enqueue({"from": from_number, "body": body, "history": [], "reply_override": reply_template})
+        return {"status": "ok", "urgency": urgency}
     else:
         history = await store.get_history(from_number, limit=10)
-        reply = await generate_reply(body, history)
-    # Send reply via provider client
-    try:
-        messaging_client.send(to=from_number, body=reply)
-    except Exception:
-        logger.exception("Failed to send message")
-        raise HTTPException(status_code=500, detail="Failed to send message")
+        await worker.enqueue({"from": from_number, "body": body, "history": history})
 
     return {"status": "ok", "urgency": urgency}
